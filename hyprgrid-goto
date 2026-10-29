@@ -1,0 +1,66 @@
+#!/bin/sh
+# Ask for a grid cell (type two numbers: "2 1", "2,1" or "-1 0") and then:
+#   hyprgrid-goto        go to that cell
+#   hyprgrid-goto send   send the focused window there (you stay)
+#   hyprgrid-goto take   send the focused window there and go with it
+# Uses the first menu tool it finds: fuzzel, wofi, rofi, tofi or bemenu.
+
+mode=${1:-goto}
+case "$mode" in
+    goto) prompt="go to x y: " ;;
+    send) prompt="send window to x y: " ;;
+    take) prompt="take window to x y: " ;;
+    *) echo "usage: hyprgrid-goto [send|take]" >&2; exit 2 ;;
+esac
+
+# Remember the focused window now: the menu takes focus while it is open.
+window=""
+if [ "$mode" != goto ]; then
+    window=$(hyprctl activewindow -j | grep -o '"address": *"0x[0-9a-fA-F]*"' | head -n1 | grep -o '0x[0-9a-fA-F]*')
+    if [ -z "$window" ]; then
+        hyprctl notify 3 3000 "rgb(ff6666)" "hyprgrid-goto: no focused window to move" >/dev/null
+        exit 1
+    fi
+fi
+
+if command -v fuzzel >/dev/null 2>&1; then
+    input=$(fuzzel --dmenu --prompt "$prompt" </dev/null)
+elif command -v wofi >/dev/null 2>&1; then
+    input=$(wofi --dmenu --prompt "$prompt" </dev/null)
+elif command -v rofi >/dev/null 2>&1; then
+    input=$(rofi -dmenu -p "${prompt%: }" </dev/null)
+elif command -v tofi >/dev/null 2>&1; then
+    input=$(tofi --prompt-text "$prompt" </dev/null)
+elif command -v bemenu >/dev/null 2>&1; then
+    input=$(bemenu -p "$prompt" </dev/null)
+else
+    hyprctl notify 3 5000 "rgb(ff6666)" "hyprgrid-goto: install a menu tool (e.g. sudo pacman -S fuzzel)" >/dev/null
+    exit 1
+fi
+
+[ -n "$input" ] || exit 0 # cancelled
+
+# Accept "2 1", "2,1", "(2,1)", "2, 1".
+set -- $(printf '%s' "$input" | tr '(),' '   ')
+if [ $# -ne 2 ]; then
+    hyprctl notify 3 3000 "rgb(ff6666)" "hyprgrid-goto: type two numbers, e.g. 2 1" >/dev/null
+    exit 1
+fi
+
+# Parentheses keep hyprctl from reading "-1,0" as a command-line flag.
+case "$mode" in
+    goto) reply=$(hyprctl hyprgrid goto "($1,$2)") ;;
+    send) reply=$(hyprctl hyprgrid send "($1,$2)" "window=$window") ;;
+    take) reply=$(hyprctl hyprgrid send "($1,$2)" follow "window=$window") ;;
+esac
+status=$?
+
+# Key bindings have no terminal, so show problems as a notification.
+case "$reply" in
+    error*|usage*|"unknown request"*|"")
+        msg=$(printf '%s' "${reply:-no reply from the hyprgrid plugin (is it loaded?)}" | head -n1)
+        hyprctl notify 3 5000 "rgb(ff6666)" "hyprgrid: $msg" >/dev/null
+        exit 1 ;;
+esac
+printf '%s\n' "$reply"
+exit $status

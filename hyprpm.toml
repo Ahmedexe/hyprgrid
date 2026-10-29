@@ -1,0 +1,9 @@
+[repository]
+name = "hyprgrid-native"
+authors = ["OpenAI", "Kawsaj Alannaq"]
+
+[hyprgrid-native]
+description = "Native cancellable three-finger gestures for a 2D Hyprland workspace grid"
+authors = ["OpenAI", "Kawsaj Alannaq"]
+output = "hyprgrid-native.so"
+build = ["make all"]
